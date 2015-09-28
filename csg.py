@@ -306,6 +306,29 @@ class PsiClass:
 
 
 def ADMM(prob=None, nsteps=None, y =None, rho= None):
+    
+## Using formulae 3.5-7 from
+##
+# @article{Boyd:2011:DOS:2185815.2185816,
+#  author = {Boyd, Stephen and Parikh, Neal and Chu, Eric and Peleato, Borja and Eckstein, Jonathan},
+#  title = {Distributed Optimization and Statistical Learning via the Alternating Direction Method of Multipliers},
+#  journal = {Found. Trends Mach. Learn.},
+#  issue_date = {January 2011},
+#  volume = {3},
+#  number = {1},
+#  month = jan,
+#  year = {2011},
+#  issn = {1935-8237},
+#  pages = {1--122},
+#  numpages = {122},
+#  url = {http://dx.doi.org/10.1561/2200000016},
+#  doi = {10.1561/2200000016},
+#  acmid = {2185816},
+#  publisher = {Now Publishers Inc.},
+#  address = {Hanover, MA, USA},
+# } 
+
+
     x  = numpy.array( y  ) 
     z  = numpy.array( y  ) 
     u  = numpy.zeros_like( x  ) 
@@ -337,6 +360,22 @@ def ADMM(prob=None, nsteps=None, y =None, rho= None):
 
 
 def Nesterov(prob=None, nsteps=None, y =None ) : 
+### Algorithm 2.13
+##
+# @article{nesterov2013first,
+#   title={On first-order algorithms for l 1/nuclear norm minimization},
+#   author={Nesterov, Yurii and Nemirovski, Arkadi},
+#   journal={Acta Numerica},
+#   volume={22},
+#   pages={509--575},
+#   year={2013},
+#   publisher={Cambridge Univ Press}
+# }
+
+
+
+
+
     errs=[]
     spa=[]
 
