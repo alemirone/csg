@@ -1,7 +1,14 @@
 import numpy as np
+import numpy
 import matplotlib.pyplot as plt
 from math import sqrt
+##from array import array
+import matplotlib
+matplotlib.use('Qt4Agg')
+import pylab 
 
+### Conjugate Sub Gradient LASSO minimisation
+##   as described in  http://arxiv.org/abs/1506.07730
 
 class Prob:
 
@@ -54,6 +61,7 @@ class Prob:
         self.NVAR = 1000
         self.NSPACE = 500
         vects = np.zeros([self.NVAR, self.NSPACE], "d")
+        numpy.random.seed(0) #FOR DEBUG
         for i in range(self.NVAR):
             vects[i] = np.random.random(self.NSPACE)
             vects[i] /= np.sqrt((vects[i] * vects[i]).sum())
@@ -65,9 +73,13 @@ class Prob:
             eig *= alpha
         self.vals = np.sqrt(vals)
         vals2 = vals
+        
         A = np.dot(vals2 * vects, vects.T)
         evals2 = np.linalg.eigvals(A).real
         
+
+        self.A =  (self.vals* vects ) .T
+
         plt.figure()
         plt.plot((np.arange(len(evals2)) + 1), np.log(abs(evals2)))
         plt.title("Singular values of matrix A")
@@ -273,34 +285,156 @@ def CSG(prob=None, nsteps=None, x=None, shrink=0.9, increase=0.02):
         p = beta_cg * pold + (-grad)
 
     return x, errs, spa
+
+
+
+class PsiClass:
+    def __init__(self,  beta  ) :
+        self.beta = beta
+        self.coef_x  = 0.0
+        self.coef_b  = 0.0
+
+    def argmin(self,z, L):
+        ## z = self.z_omega - self.coef_x/self.L
+        z = z - self.coef_x/L
+        z =numpy.maximum( (numpy.abs(z)-self.coef_b*self.beta/L),0)*numpy.sign(z)        
+        return z
+        
+    def update(self, Dcoef_x = 0, Dcoef_b = 0 ) :
+        self.coef_x = self.coef_x + Dcoef_x
+        self.coef_b = self.coef_b + Dcoef_b
+
+
+def ADMM(prob=None, nsteps=None, y =None, rho= None):
+    x  = numpy.array( y  ) 
+    z  = numpy.array( y  ) 
+    u  = numpy.zeros_like( x  ) 
+    A = prob.A
+    AtAp = (numpy.dot( A.T,A))
+    for i in range(len(x)):
+        AtAp[i,i] = AtAp[i,i] + rho
+    invAtAp =  numpy.linalg.inv( AtAp )
+    print A.shape
+    print prob.b.shape
+    Atb = numpy.dot(A.T, prob.b) 
+
+    errs=[]
+    spa=[]
+
+    for step in range(nsteps ):
+        x = numpy.dot( invAtAp, Atb+rho*(z-u)     ) 
+        z = x+u
+        z = numpy.maximum( (numpy.abs(z)-prob.beta/rho),0)*numpy.sign(z)
+        u = u+x-z
+
+        err, grad = prob.error_Qgradient(x)
+        print err
+        spa.append( (numpy.abs(numpy.sign(x) )).sum()   )
+        errs.append( err) 
+
+    return x, errs, spa
+
+
+
+def Nesterov(prob=None, nsteps=None, y =None ) : 
+    errs=[]
+    spa=[]
+
+    z_omega = numpy.zeros_like( y  ) 
+    L = prob.L
+    psi = PsiClass(  prob.beta)
+    z = z_omega
+    for step in range(nsteps ):
+        
+        z =  psi.argmin(z_omega, L)
+        tau = (2.0*(step+2.0))/((step+1.0)*(step+4.0)) 
+        x = tau*z+(1-tau)*y        
+        err, grad = prob.error_Qgradient(x)
+        gradold = grad
+        ll =  2*L/(step+2.0)
+        hx =  z - grad/( ll ) 
+        hx = numpy.maximum( (numpy.abs(hx)-prob.beta/ll),0)*numpy.sign(hx)
+        y  =tau *hx   +  ( 1 - tau)*y
+        psi.update(Dcoef_x = + grad*(step+2.0)/2.0  ,  Dcoef_b =  (step+2.0)/2.0 )
+        errs.append(err)
+        print err
+        spa.append( (numpy.abs(numpy.sign(x) )).sum()   )
+
+ 
+    return y, errs, spa
+
+
     
 
 if __name__ == '__main__':
     
     # Create an instance of the problem A*x = b
-    prob = Prob(beta=0.1, alpha=1.01)
-    # Initial guess for FISTA
-    y = np.zeros(prob.NVAR, "d")
-    # Run 2000 iterations of restarted FISTA
-    print("Running FISTA ...")
-    y, errsF, spaF = Fista(prob=prob, nsteps=2000, y=np.zeros(prob.NVAR, "d"), restart_if_increase=True)
-    
-    # Initial guess for CSG
-    x = np.zeros(prob.NVAR, "d")
-    # Run 2000 iterations of CSG
-    print("Running CSG ...")
-    x, errsC, spaC = CSG(prob=prob, nsteps=2000, x=np.zeros(prob.NVAR, "d"), shrink=0.85, increase=0.04)
-    
-    # Compare the decay of the objective function for both methods
-    limit = np.array(errsF).min()
-    limit = min(limit, np.array(errsC).min())
+        prob = Prob(beta=0.1, alpha=1.01)
+	y=numpy.zeros(prob.NVAR,"d")
+        method = "Admm"
 
-    plt.figure()
-    plt.plot((np.arange(len(errsF)) + 1), np.log(errsF - limit))
-    tmp = errsC - limit
-    tmp[tmp < 1e-14] = 1e-14
-    plt.plot((np.arange(len(errsC)) + 1), np.log(tmp))
-    plt.legend(['FISTA', 'CSG'])
-    plt.xlabel('iterations')
-    plt.show()
-    
+        y, errsF, spaF  =Fista    (prob=prob, nsteps=2000, y = numpy.zeros(prob.NVAR,"d"),  restart_if_increase=True)    
+        
+        y, errsN, spaN  =Nesterov (prob=prob, nsteps=2000, y = numpy.zeros(prob.NVAR,"d") )    
+
+        y, errsA, spaA  = ADMM (prob=prob, nsteps=2000, y = numpy.zeros(prob.NVAR,"d"), rho= prob.L/350 )    
+        
+        
+
+	x=numpy.zeros(prob.NVAR,"d")
+        x, errsC, spaC=CSG(prob=prob, nsteps=2000, x = numpy.zeros(prob.NVAR,"d"), shrink=0.85, increase=0.04  )  
+        ## x, errsC, spaC=Fista    (prob=prob, nsteps=2000, y = numpy.zeros(prob.NVAR,"d"),  restart_if_increase=True)    
+        
+	limite = numpy.array(errsF).min()
+        
+	limite = min(limite,numpy.array(errsC).min())
+
+        print " MIN ", numpy.array(errsC).min(), limite
+        fig= pylab.figure()
+        ax = pylab.plt.subplot(111)
+        ax.set_yscale("log", nonposy='clip')
+
+
+	tmp = errsN-limite
+	tmp[tmp < 1e-14] = 1e-14
+	fgn, = pylab.plot((numpy.arange(len(errsN))+1), (tmp),
+                   'k:',label=r'FGN',linewidth=2.5)
+
+
+	fista, = pylab.plot((numpy.arange(len(errsF))+1), (errsF-limite),
+                   'k--',label=r'FISTA',linewidth=4)
+
+
+	tmp = errsA-limite
+	tmp[tmp < 1e-14] = 1e-14
+	admm, = pylab.plot((numpy.arange(len(errsA))+1), (tmp),
+                   'k-.',label=r'ADMM',linewidth=2.5)
+
+
+
+	tmp = errsC-limite
+	tmp[tmp < 1e-14] = 1e-14
+	csg, = pylab.plot((numpy.arange(len(errsC))+1), (tmp),
+                   'k-',label=r'CSG',linewidth=2.5)
+        print len(errsC)
+        ax.set_ylim(ymin=1.0e-15)
+
+
+	pylab.xlabel('iterations', fontsize=20)
+	pylab.ylabel('$F(x)-F(x_\infty)$', fontsize=18)
+
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label.set_fontsize(18) 
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label.set_fontsize(18) 
+        #legend1 = pylab.plt.legend( [fgn, fista] ,loc=1, shadow=True, fontsize=23)
+        #legend2 = pylab.plt.legend( [csg, admm] ,loc=10, shadow=True, fontsize=23)
+        legend2 = pylab.plt.legend(loc=10, shadow=True, fontsize=23)
+
+
+
+	#~ pylab.ylabel(r'\log\left(E-E_{\text{min}}\right)')
+        fig.tight_layout()        
+ 
+	pylab.show()
+	
